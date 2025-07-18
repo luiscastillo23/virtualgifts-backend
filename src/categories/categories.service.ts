@@ -11,7 +11,7 @@ import type { UpdateCategoryDto } from './dto/update-category.dto';
 // import type { PaginationDto } from '../common/dto/pagination.dto';
 
 import { Prisma, Category } from '@prisma/client';
-import { AwsS3Service } from 'src/common/services/aws-s3.service';
+import { S3Service } from 'src/common/services/aws-s3.service';
 import { sanitizeFilename } from 'src/utils/sanitize-filenames-utils';
 
 @Injectable()
@@ -19,7 +19,7 @@ export class CategoriesService {
   // Inject PrismaService
   constructor(
     private readonly prisma: PrismaService,
-    private readonly awsS3Service: AwsS3Service,
+    private readonly s3Service: S3Service,
   ) {}
 
   // Optional: Initialize logger for this service context
@@ -67,11 +67,7 @@ export class CategoriesService {
       const imageKey = `categories/images/${Date.now()}-${sanitizedImageFilename}`;
 
       // Upload the image to S3
-      await this.awsS3Service.uploadFile(
-        imageKey,
-        image.buffer,
-        image.mimetype,
-      );
+      const uploadResult = await this.s3Service.uploadFile(image, imageKey);
 
       const categoryData = {
         ...createCategoryDto,
