@@ -170,10 +170,11 @@ export class CategoriesService {
   async update(
     id: string,
     updateCategoryDto: UpdateCategoryDto,
+    image?: Express.Multer.File,
   ): Promise<Category> {
     try {
       // Check if category exists
-      await this.findOne(id);
+      const categoryFound = await this.findOne(id);
 
       // Check if name is being changed and if it's already in use
       if (updateCategoryDto.name) {
@@ -208,6 +209,24 @@ export class CategoriesService {
 
         if (existingSlug) {
           throw new ConflictException('Category with this slug already exists');
+        }
+      }
+
+      if (image) {
+        // Sanitize the image filename
+        const sanitizedImageFilename = sanitizeFilename(image.originalname);
+        const imageKey = `categories/images/${Date.now()}-${sanitizedImageFilename}`;
+        // Upload the new image to S3
+        const uploadResult = await this.s3Service.uploadFile(image, imageKey);
+        // Update the image key in the DTO
+        updateCategoryDto.image = imageKey;
+
+        if (
+          categoryFound.image &&
+          categoryFound.image.startsWith('categories/images/')
+        ) {
+          // Delete the image from S3
+          await this.s3Service.deleteFile(categoryFound.image);
         }
       }
 
@@ -254,7 +273,7 @@ export class CategoriesService {
    */
   async remove(id: string): Promise<{ success: boolean }> {
     // Check if category exists
-    await this.findOne(id);
+    const categoryFound: Category = await this.findOne(id);
 
     try {
       // Check if category has subcategories
@@ -275,6 +294,14 @@ export class CategoriesService {
 
       if (productsCount > 0) {
         throw new ConflictException('Cannot delete category with products');
+      }
+
+      if (
+        categoryFound.image &&
+        categoryFound.image.startsWith('categories/images/')
+      ) {
+        // Delete the image from S3
+        await this.s3Service.deleteFile(categoryFound.image);
       }
 
       // Delete the category

@@ -77,11 +77,13 @@ export class CategoriesController {
     description: 'The category has been successfully updated.',
   })
   @ApiResponse({ status: 404, description: 'Category not found.' })
-  update(
+  @UseInterceptors(FileInterceptor('image'))
+  async update(
     @Param('id') id: string,
     @Body() updateCategoryDto: UpdateCategoryDto,
-  ) {
-    return this.categoriesService.update(id, updateCategoryDto);
+    @UploadedFile() image?: Express.Multer.File,
+  ): Promise<Category> {
+    return this.categoriesService.update(id, updateCategoryDto, image);
   }
 
   @Delete(':id')
