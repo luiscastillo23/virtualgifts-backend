@@ -1,0 +1,328 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// User model
+model User {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  username      String?    @unique
+  email         String    @unique
+  firstName     String
+  lastName      String
+  password      String
+  role          UserRole  @default(CUSTOMER)
+  status        UserStatus @default(PENDING)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  lastLogin     DateTime?
+  avatar        String?
+  phone         String?
+  
+  // Address information
+  street        String?
+  city          String?
+  state         String?
+  zipCode       String?
+  country       String?
+  
+  // User preferences
+  notificationsEnabled Boolean @default(true)
+  marketingEnabled     Boolean @default(false)
+  theme               String   @default("system")
+  
+  // Relations
+  orders        Order[]
+  favorites     Favorite[]
+  carts         Cart[]
+  reviews       Review[]
+  activities    UserActivity[]
+  
+  @@map("users")
+}
+
+enum UserRole {
+  ADMIN
+  CUSTOMER
+  MANAGER
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  PENDING
+  SUSPENDED
+}
+
+// Category model
+model Category {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name          String
+  slug          String    @unique
+  description   String?
+  icon          String?
+  image         String?
+  status        CategoryStatus @default(ACTIVE)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  // Relations
+  subcategories Subcategory[]
+  products      Product[]
+  
+  @@map("categories")
+}
+
+enum CategoryStatus {
+  ACTIVE
+  INACTIVE
+}
+
+// Subcategory model
+model Subcategory {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name          String
+  slug          String    @unique
+  description   String?
+  status        SubcategoryStatus @default(ACTIVE)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  // Relations
+  categoryId    String    @db.Uuid
+  category      Category  @relation(fields: [categoryId], references: [id])
+  products      Product[]
+  
+  @@index([categoryId])
+  @@map("subcategories")
+}
+
+enum SubcategoryStatus {
+  ACTIVE
+  INACTIVE
+}
+
+// Product model
+model Product {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name          String
+  slug          String    @unique
+  description   String?
+  price         Decimal   @db.Decimal(10, 2)
+  salePrice     Decimal?  @db.Decimal(10, 2)
+  sku           String    @unique
+  stock         Int       @default(0)
+  images        String[]
+  featured      Boolean   @default(false)
+  status        ProductStatus @default(ACTIVE)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  // Relations
+  categoryId    String    @db.Uuid
+  category      Category  @relation(fields: [categoryId], references: [id])
+  subcategoryId String?   @db.Uuid
+  subcategory   Subcategory? @relation(fields: [subcategoryId], references: [id])
+  orderItems    OrderItem[]
+  cartItems     CartItem[]
+  favorites     Favorite[]
+  reviews       Review[]
+  
+  @@index([categoryId])
+  @@index([subcategoryId])
+  @@map("products")
+}
+
+enum ProductStatus {
+  ACTIVE
+  INACTIVE
+  OUT_OF_STOCK
+  DISCONTINUED
+}
+
+// Order model
+model Order {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orderNumber   String    @unique
+  status        OrderStatus @default(PENDING)
+  total         Decimal   @db.Decimal(10, 2)
+  subtotal      Decimal   @db.Decimal(10, 2)
+  tax           Decimal   @db.Decimal(10, 2)
+  shipping      Decimal   @db.Decimal(10, 2)
+  discount      Decimal   @default(0) @db.Decimal(10, 2)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  // Shipping information
+  shippingFirstName String?
+  shippingLastName  String?
+  shippingEmail     String?
+  shippingAddress   String?
+  shippingCity      String?
+  shippingState     String?
+  shippingZipCode   String?
+  shippingCountry   String?
+  shippingPhone     String?
+  
+  // Payment information
+  paymentMethod     String?
+  paymentStatus     PaymentStatus @default(PENDING)
+  transactionId     String?
+  
+  // Relations
+  userId        String    @db.Uuid
+  user          User      @relation(fields: [userId], references: [id])
+  items         OrderItem[]
+  
+  @@index([userId])
+  @@map("orders")
+}
+
+enum OrderStatus {
+  PENDING
+  PROCESSING
+  SHIPPED
+  DELIVERED
+  CANCELLED
+  REFUNDED
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+// OrderItem model
+model OrderItem {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  quantity      Int
+  price         Decimal   @db.Decimal(10, 2)
+  total         Decimal   @db.Decimal(10, 2)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  // Digital product specific fields
+  code          String?   // For gift cards, license keys, etc.
+  activationUrl String?
+  expiresAt     DateTime?
+  
+  // Relations
+  orderId       String    @db.Uuid
+  order         Order     @relation(fields: [orderId], references: [id])
+  productId     String    @db.Uuid
+  product       Product   @relation(fields: [productId], references: [id])
+  
+  @@index([orderId])
+  @@index([productId])
+  @@map("order_items")
+}
+
+// Cart model
+model Cart {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  // Relations
+  userId        String    @db.Uuid
+  user          User      @relation(fields: [userId], references: [id])
+  items         CartItem[]
+  
+  @@index([userId])
+  @@map("carts")
+}
+
+// CartItem model
+model CartItem {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  quantity      Int
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  // Relations
+  cartId        String    @db.Uuid
+  cart          Cart      @relation(fields: [cartId], references: [id])
+  productId     String    @db.Uuid
+  product       Product   @relation(fields: [productId], references: [id])
+  
+  @@index([cartId])
+  @@index([productId])
+  @@map("cart_items")
+}
+
+// Favorite model
+model Favorite {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  createdAt     DateTime  @default(now())
+  
+  // Relations
+  userId        String    @db.Uuid
+  user          User      @relation(fields: [userId], references: [id])
+  productId     String    @db.Uuid
+  product       Product   @relation(fields: [productId], references: [id])
+  
+  @@unique([userId, productId])
+  @@index([userId])
+  @@index([productId])
+  @@map("favorites")
+}
+
+// Review model
+model Review {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  rating        Int
+  comment       String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  // Relations
+  userId        String    @db.Uuid
+  user          User      @relation(fields: [userId], references: [id])
+  productId     String    @db.Uuid
+  product       Product   @relation(fields: [productId], references: [id])
+  
+  @@index([userId])
+  @@index([productId])
+  @@map("reviews")
+}
+
+// UserActivity model for tracking user actions
+model UserActivity {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  type          ActivityType
+  details       Json?
+  ipAddress     String?
+  userAgent     String?
+  createdAt     DateTime  @default(now())
+  
+  // Relations
+  userId        String    @db.Uuid
+  user          User      @relation(fields: [userId], references: [id])
+  
+  @@index([userId])
+  @@index([type])
+  @@map("user_activities")
+}
+
+enum ActivityType {
+  LOGIN
+  LOGOUT
+  REGISTER
+  PASSWORD_CHANGE
+  PROFILE_UPDATE
+  ORDER_PLACED
+  PAYMENT_MADE
+}
+
