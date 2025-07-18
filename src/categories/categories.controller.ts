@@ -9,6 +9,8 @@ import {
   HttpStatus,
   HttpCode,
   Body,
+  UseInterceptors,
+  UploadedFile,
 } from '@nestjs/common';
 import { CategoriesService } from './categories.service';
 import type { CreateCategoryDto } from './dto/create-category.dto';
@@ -24,6 +26,7 @@ import {
   ApiResponse,
   ApiBearerAuth,
 } from '@nestjs/swagger';
+import { FileInterceptor } from '@nestjs/platform-express';
 
 @ApiTags('categories')
 @Controller('categories')
@@ -40,11 +43,13 @@ export class CategoriesController {
     description: 'The category has been successfully created.',
   })
   @ApiResponse({ status: 400, description: 'Bad request.' })
+  @UseInterceptors(FileInterceptor('image'))
   async create(
+    @UploadedFile() image: Express.Multer.File,
     @Body() createCategoryDto: CreateCategoryDto,
   ): Promise<Category> {
     console.log('Creating category with data - controller:', createCategoryDto);
-    return this.categoriesService.create(createCategoryDto);
+    return this.categoriesService.create(image, createCategoryDto);
   }
 
   @Get()

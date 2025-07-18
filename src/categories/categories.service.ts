@@ -11,11 +11,16 @@ import type { UpdateCategoryDto } from './dto/update-category.dto';
 // import type { PaginationDto } from '../common/dto/pagination.dto';
 
 import { Prisma, Category } from '@prisma/client';
+import { AwsS3Service } from 'src/common/services/aws-s3.service';
+import { sanitizeFilename } from 'src/utils/sanitize-filenames-utils';
 
 @Injectable()
 export class CategoriesService {
   // Inject PrismaService
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly awsS3Service: AwsS3Service,
+  ) {}
 
   // Optional: Initialize logger for this service context
   private readonly logger = new Logger(CategoriesService.name);
@@ -25,9 +30,15 @@ export class CategoriesService {
    * @param createCategoryDto - Data transfer object for creating a category
    * @returns The created category
    */
-  async create(createCategoryDto: CreateCategoryDto): Promise<Category> {
+  async create(
+    image: Express.Multer.File,
+    createCategoryDto: CreateCategoryDto,
+  ): Promise<Category> {
     try {
       console.log('Creating category with data:', createCategoryDto);
+
+      const sanitizedImageFilename = sanitizeFilename(image.originalname);
+
       // Check if category with the same name already exists
       const existingCategory = await this.prisma.category.findFirst({
         where: { name: createCategoryDto.name },
@@ -53,10 +64,23 @@ export class CategoriesService {
       if (existingSlug) {
         throw new ConflictException('Category with this slug already exists');
       }
+      const imageKey = `categories/images/${Date.now()}-${sanitizedImageFilename}`;
 
+      // Upload the image to S3
+      await this.awsS3Service.uploadFile(
+        imageKey,
+        image.buffer,
+        image.mimetype,
+      );
+
+      const categoryData = {
+        ...createCategoryDto,
+        // Store only the S3 keys, not the presigned URLs
+        image: imageKey,
+      };
       // Create the category
       return this.prisma.category.create({
-        data: createCategoryDto,
+        data: categoryData,
       });
     } catch (error) {
       // Check for Prisma's unique constraint violation error
