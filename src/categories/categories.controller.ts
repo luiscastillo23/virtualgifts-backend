@@ -11,6 +11,7 @@ import {
   Body,
   UseInterceptors,
   UploadedFile,
+  ParseUUIDPipe,
 } from '@nestjs/common';
 import { CategoriesService } from './categories.service';
 import type { CreateCategoryDto } from './dto/create-category.dto';
@@ -44,7 +45,7 @@ export class CategoriesController {
   })
   @ApiResponse({ status: 400, description: 'Bad request.' })
   @UseInterceptors(FileInterceptor('image'))
-  async create(
+  create(
     @UploadedFile() image: Express.Multer.File,
     @Body() createCategoryDto: CreateCategoryDto,
   ): Promise<Category> {
@@ -55,7 +56,7 @@ export class CategoriesController {
   @Get()
   @ApiOperation({ summary: 'Get all categories' })
   @ApiResponse({ status: 200, description: 'Return all categories.' })
-  async findAll(): Promise<Category[]> {
+  findAll(): Promise<Category[]> {
     return this.categoriesService.findAll();
   }
 
@@ -63,7 +64,7 @@ export class CategoriesController {
   @ApiOperation({ summary: 'Get a category by id' })
   @ApiResponse({ status: 200, description: 'Return the category.' })
   @ApiResponse({ status: 404, description: 'Category not found.' })
-  async findOne(@Param('id') id: string): Promise<Category> {
+  findOne(@Param('id', ParseUUIDPipe) id: string): Promise<Category> {
     return this.categoriesService.findOne(id);
   }
 
@@ -78,8 +79,8 @@ export class CategoriesController {
   })
   @ApiResponse({ status: 404, description: 'Category not found.' })
   @UseInterceptors(FileInterceptor('image'))
-  async update(
-    @Param('id') id: string,
+  update(
+    @Param('id', ParseUUIDPipe) id: string,
     @Body() updateCategoryDto: UpdateCategoryDto,
     @UploadedFile() image?: Express.Multer.File,
   ): Promise<Category> {
@@ -97,7 +98,9 @@ export class CategoriesController {
     description: 'The category has been successfully deleted.',
   })
   @ApiResponse({ status: 404, description: 'Category not found.' })
-  async remove(@Param('id') id: string): Promise<{ success: boolean }> {
+  remove(
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<{ success: boolean }> {
     return this.categoriesService.remove(id);
   }
 
