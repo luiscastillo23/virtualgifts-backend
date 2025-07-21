@@ -144,7 +144,7 @@ export class CategoriesService {
    * @param slug - The slug of the category to retrieve
    * @returns The category with the specified slug
    */
-  async findBySlug(slug: string) {
+  async findBySlug(slug: string): Promise<Category> {
     try {
       const category = await this.prisma.category.findUnique({
         where: { slug },
@@ -250,7 +250,7 @@ export class CategoriesService {
           const conflictingField =
             (error.meta?.target as string[])?.join(', ') || 'name';
           this.logger.warn(
-            `Update failed due to conflict on field(s): ${conflictingField} for role ID: ${id}`,
+            `Update failed due to conflict on field(s): ${conflictingField} for category ID: ${id}`,
           );
           throw new ConflictException(
             `Cannot update category. The value for '${conflictingField}' is already in use.`,
