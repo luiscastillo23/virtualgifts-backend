@@ -45,6 +45,7 @@ export class ProductsService {
   ): Promise<Product> {
     try {
       console.log('Creating product with data:', createProductDto);
+      console.log('Uploaded images:', images);
 
       // Check if product with the same name already exists
       const existingProduct = await this.prisma.product.findFirst({
@@ -120,6 +121,15 @@ export class ProductsService {
         throw new BadRequestException(
           'Sale price must be less than regular price',
         );
+      }
+
+      if (createProductDto.popularityScore !== undefined) {
+        if (createProductDto.popularityScore < 0) {
+          throw new BadRequestException('Popularity score cannot be negative');
+        }
+        if (createProductDto.popularityScore > 100) {
+          throw new BadRequestException('Popularity score cannot exceed 100');
+        }
       }
 
       // Upload images to S3 if provided
@@ -433,6 +443,7 @@ export class ProductsService {
   async update(
     id: string,
     updateProductDto: UpdateProductDto,
+    existingImages?: string[],
     images?: Express.Multer.File[],
   ): Promise<Product> {
     try {
@@ -535,6 +546,99 @@ export class ProductsService {
         );
       }
 
+      if (updateProductDto.popularityScore !== undefined) {
+        if (updateProductDto.popularityScore < 0) {
+          throw new BadRequestException('Popularity score cannot be negative');
+        }
+        if (updateProductDto.popularityScore > 100) {
+          throw new BadRequestException('Popularity score cannot exceed 100');
+        }
+      }
+
+      // --- Image Handling ---
+      let imagesToKeep: string[] = [];
+      const imagesToDelete: string[] = [];
+      const currentImages = existingImages || [];
+
+      // Step 1: Process existing images
+      if (currentImages.length > 0 && Array.isArray(currentImages)) {
+        // Extract S3 keys from presigned URLs
+        const existingImageKeys = currentImages.map((imageKey) => {
+          return this.s3Service.extractKeyFromUrl(imageKey);
+        });
+        this.logger.debug('Existing image keys:', existingImageKeys);
+
+        // Find images to keep and delete
+        productFound.images.forEach((imageKey) => {
+          if (existingImageKeys.includes(imageKey)) {
+            imagesToKeep.push(imageKey);
+          } else {
+            imagesToDelete.push(imageKey);
+          }
+        });
+      } else {
+        // If no existingImages provided, delete all existing images
+        imagesToDelete.push(...productFound.images);
+      }
+
+      // Delete images marked for removal directly using the key
+      if (imagesToDelete.length > 0) {
+        await Promise.all(
+          imagesToDelete.map(async (imageKey) => {
+            try {
+              this.logger.log(`Deleting image with key: ${imageKey}`);
+              await this.s3Service.deleteFile(imageKey); // Use the key directly
+            } catch (error) {
+              // Log error but potentially continue? Or should failure stop the update?
+              this.logger.error(
+                `Failed to delete image ${imageKey} from S3:`,
+                error.stack,
+              );
+            }
+          }),
+        );
+      }
+
+      // Upload new images
+      const newImageKeys: string[] = [];
+      if (images && images.length > 0) {
+        await Promise.all(
+          images.map(async (image) => {
+            // *** Apply sanitization to new image filenames ***
+            const sanitizedImageFilename = sanitizeFilename(image.originalname);
+            const imageKey = `products/images/${Date.now()}-${sanitizedImageFilename}`;
+            this.logger.debug(`Uploading new image with key: ${imageKey}`);
+
+            // uploadFileToS3 now returns the key
+            const uploadedKey = await this.s3Service.uploadFile(
+              image,
+              imageKey,
+            );
+            newImageKeys.push(imageKey);
+          }),
+        );
+
+        /* 
+        const uploadPromises = images.map(async (image) => {
+          // *** Apply sanitization to new image filenames ***
+          const sanitizedImageFilename = sanitizeFilename(image.originalname);
+          const imageKey = `products/images/${Date.now()}-${sanitizedImageFilename}`;
+          this.logger.debug(`Uploading new image with key: ${imageKey}`);
+
+          // uploadFileToS3 now returns the key
+          return await this.s3Service.uploadFile(image, imageKey);
+        });
+        newImageKeys.push(...(await Promise.all(uploadPromises))); */
+      }
+
+      // Combine kept and new image keys
+      const imagesToDto: string[] = [...imagesToKeep, ...newImageKeys];
+
+      /*
+      // Prepare imageKeys array for update
+      let imageKeys: string[] = productFound.images
+        ? [...productFound.images]
+        : [];
       // Handle image uploads if provided
       if (images && images.length > 0) {
         // Delete old images from S3
@@ -547,7 +651,7 @@ export class ProductsService {
         }
 
         // Upload new images
-        const imageKeys: string[] = [];
+        imageKeys = [];
         for (const image of images) {
           const sanitizedImageFilename = sanitizeFilename(image.originalname);
           const imageKey = `products/images/${Date.now()}-${sanitizedImageFilename}`;
@@ -555,14 +659,21 @@ export class ProductsService {
           await this.s3Service.uploadFile(image, imageKey);
           imageKeys.push(imageKey);
         }
+      } */
 
-        updateProductDto.images = imageKeys;
-      }
+      // Prepare data for update
+      const updateProduct = {
+        ...updateProductDto,
+        // Convert price and salePrice to Decimal
+        price: updateProductDto.price || productFound.price,
+        salePrice: updateProductDto.salePrice || productFound.salePrice,
+        images: imagesToDto,
+      };
 
       // Update the product
       return await this.prisma.product.update({
         where: { id },
-        data: updateProductDto,
+        data: updateProduct,
         include: {
           category: true,
           subcategory: true,

@@ -38,16 +38,16 @@ async function bootstrap() {
 
   // --- Validation ---
   // Enable global validation pipe to automatically transform and validate incoming data based on DTOs
-  /*  app.useGlobalPipes(
+  app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true, // Strip properties that do not have any decorators
-      forbidNonWhitelisted: true, // Allow extra fields (fixes 400 error with FormData)
+      forbidNonWhitelisted: false, // Allow extra fields (fixes 400 error with FormData)
       transform: true, // Automatically transform payloads to DTO instances
       transformOptions: {
         enableImplicitConversion: true, // Allow implicit type conversion based on TS type
       },
     }),
-  );  */
+  );
 
   // --- Swagger (OpenAPI) Setup ---
   // Only setup Swagger in development environment for security and performance reasons
@@ -100,21 +100,3 @@ bootstrap().catch((err) => {
   logger.error('❌ Error during application bootstrap', err.stack);
   process.exit(1); // Exit process on critical bootstrap failure
 });
-
-// old
-/*
-
-import { NestFactory } from '@nestjs/core';
-import { AppModule } from './app.module';
-
-async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
-  await app.listen(3000);
-}
-bootstrap();
-
-
-import { NestFactory } from '@nestjs/core';
-import { AppModule } from './app.module';
-
-*/

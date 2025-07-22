@@ -10,6 +10,7 @@ import {
   IsArray,
   IsBoolean,
   IsUUID,
+  IsNumber,
 } from 'class-validator';
 import { ProductStatus } from '@prisma/client';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
@@ -49,10 +50,20 @@ export class CreateProductDto {
     example: 25.99,
     required: true,
   })
+  @Transform(({ value }) => {
+    if (value === null || value === undefined || value === '') return undefined;
+    if (typeof value === 'string') {
+      const parsed = parseFloat(value);
+      return isNaN(parsed) ? undefined : parsed;
+    }
+    if (typeof value === 'number') {
+      return value;
+    }
+    return undefined;
+  })
   @IsNotEmpty({ message: 'Price cannot be empty.' })
-  @Transform(({ value }) => parseFloat(value))
-  @IsDecimal(
-    { decimal_digits: '0,2' },
+  @IsNumber(
+    { allowNaN: false, maxDecimalPlaces: 2 },
     { message: 'Price must be a valid decimal with up to 2 decimal places.' },
   )
   @Min(0, { message: 'Price must be greater than or equal to 0.' })
@@ -64,7 +75,17 @@ export class CreateProductDto {
     required: false,
   })
   @IsOptional()
-  @Transform(({ value }) => (value ? parseFloat(value) : undefined))
+  @Transform(({ value }) => {
+    if (value === null || value === undefined || value === '') return undefined;
+    if (typeof value === 'string') {
+      const parsed = parseFloat(value);
+      return isNaN(parsed) ? undefined : parsed;
+    }
+    if (typeof value === 'number') {
+      return value;
+    }
+    return undefined;
+  })
   @IsDecimal(
     { decimal_digits: '0,2' },
     {
@@ -74,6 +95,37 @@ export class CreateProductDto {
   )
   @Min(0, { message: 'Sale price must be greater than or equal to 0.' })
   salePrice?: number;
+
+  @ApiProperty({
+    description: 'Popularity score of the product',
+    example: 70,
+    required: true,
+  })
+  @Transform(({ value }) => {
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      if (trimmed === '') return undefined;
+      const parsed = Number(trimmed);
+      return Number.isInteger(parsed) ? parsed : undefined;
+    }
+    if (typeof value === 'number') {
+      return Number.isInteger(value) ? value : undefined;
+    }
+    return undefined;
+  })
+  @IsInt({ message: 'Popularity score must be an integer.' })
+  @Min(0, { message: 'Popularity score must be greater than or equal to 0.' })
+  popularityScore: number;
+
+  @ApiPropertyOptional({
+    description: 'Whether the product is a best seller',
+    example: false,
+    default: false,
+  })
+  @IsOptional()
+  @Transform(({ value }) => value === 'true' || value === true)
+  @IsBoolean()
+  bestSeller?: boolean;
 
   @ApiProperty({
     description: 'Unique SKU (Stock Keeping Unit) for inventory tracking',
@@ -95,18 +147,7 @@ export class CreateProductDto {
   @Min(0, { message: 'Stock must be greater than or equal to 0.' })
   stock: number;
 
-  @ApiProperty({
-    description: 'Array of image URLs for the product',
-    example: [
-      'https://example.com/image1.jpg',
-      'https://example.com/image2.jpg',
-    ],
-    required: true,
-  })
-  @IsNotEmpty({ message: 'Images cannot be empty.' })
-  @IsArray()
-  @IsString({ each: true })
-  images: string[];
+  // Images are handled via file upload (FilesInterceptor) in the controller
 
   @ApiPropertyOptional({
     description: 'Whether the product is featured',

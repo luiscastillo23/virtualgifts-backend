@@ -7,10 +7,10 @@ import {
   Param,
   Delete,
   UseInterceptors,
-  UploadedFile,
   ParseUUIDPipe,
   HttpCode,
   HttpStatus,
+  UploadedFiles,
 } from '@nestjs/common';
 import { ProductsService } from './products.service';
 import { CreateProductDto } from './dto/create-product.dto';
@@ -21,7 +21,7 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
-import { FileInterceptor } from '@nestjs/platform-express';
+import { FilesInterceptor } from '@nestjs/platform-express';
 import { Product } from '@prisma/client';
 
 @ApiTags('products')
@@ -37,11 +37,13 @@ export class ProductsController {
     description: 'The product has been successfully created.',
   })
   @ApiResponse({ status: 400, description: 'Bad request.' })
-  @UseInterceptors(FileInterceptor('images'))
+  @UseInterceptors(FilesInterceptor('images'))
   create(
     @Body() createProductDto: CreateProductDto,
-    @UploadedFile() images: Express.Multer.File[],
+    @UploadedFiles() images: Express.Multer.File[],
   ): Promise<Product> {
+    console.log('Creating product with data - controller:', createProductDto);
+    console.log('Uploaded images: - controller', images);
     return this.productsService.create(images, createProductDto);
   }
 
@@ -68,13 +70,19 @@ export class ProductsController {
     description: 'The product has been successfully updated.',
   })
   @ApiResponse({ status: 404, description: 'Product not found.' })
-  @UseInterceptors(FileInterceptor('images'))
+  @UseInterceptors(FilesInterceptor('images'))
   update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() updateProductDto: UpdateProductDto,
-    @UploadedFile() images?: Express.Multer.File[],
+    existingImages?: string[],
+    @UploadedFiles() images?: Express.Multer.File[],
   ): Promise<Product> {
-    return this.productsService.update(id, updateProductDto, images);
+    return this.productsService.update(
+      id,
+      updateProductDto,
+      existingImages,
+      images,
+    );
   }
 
   @Delete(':id')

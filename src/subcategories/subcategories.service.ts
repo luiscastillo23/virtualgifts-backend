@@ -109,6 +109,9 @@ export class SubcategoriesService {
         orderBy: {
           ['createdAt']: 'desc',
         },
+        include: {
+          category: true, // Include the related category
+        },
       });
     } catch (error) {
       this.logger.error('Failed to fetch all subcategories', error.stack);

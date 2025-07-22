@@ -120,6 +120,8 @@ model Product {
   description   String?
   price         Decimal   @db.Decimal(10, 2)
   salePrice     Decimal?  @db.Decimal(10, 2)
+  popularityScore Int       @default(0)
+  bestSeller    Boolean?   @default(false)
   sku           String    @unique
   stock         Int       @default(0)
   images        String[]
