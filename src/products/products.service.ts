@@ -11,7 +11,13 @@ import type { CreateProductDto } from './dto/create-product.dto';
 import type { UpdateProductDto } from './dto/update-product.dto';
 // import type { PaginationDto } from '../common/dto/pagination.dto';
 
-import { Prisma, Product, ProductStatus } from '@prisma/client';
+import {
+  Category,
+  Prisma,
+  Product,
+  ProductStatus,
+  Subcategory,
+} from '@prisma/client';
 import { S3Service } from 'src/common/services/aws-s3.service';
 import { sanitizeFilename } from 'src/utils/sanitize-filenames-utils';
 
@@ -44,24 +50,24 @@ export class ProductsService {
     createProductDto: CreateProductDto,
   ): Promise<Product> {
     try {
-      console.log('Creating product with data:', createProductDto);
-      console.log('Uploaded images:', images);
-
       // Check if product with the same name already exists
-      const existingProduct = await this.prisma.product.findFirst({
-        where: { name: createProductDto.name },
-      });
+      const existingProductByName: Product =
+        await this.prisma.product.findFirst({
+          where: { name: createProductDto.name },
+        });
 
-      if (existingProduct) {
+      if (existingProductByName) {
         throw new ConflictException('Product with this name already exists');
       }
 
       // Check if SKU already exists
-      const existingSku = await this.prisma.product.findFirst({
-        where: { sku: createProductDto.sku },
-      });
+      const existingProductBySku: Product = await this.prisma.product.findFirst(
+        {
+          where: { sku: createProductDto.sku },
+        },
+      );
 
-      if (existingSku) {
+      if (existingProductBySku) {
         throw new ConflictException('Product with this SKU already exists');
       }
 
@@ -74,16 +80,17 @@ export class ProductsService {
       }
 
       // Check if slug is unique
-      const existingSlug = await this.prisma.product.findFirst({
-        where: { slug: createProductDto.slug },
-      });
+      const existingProductBySlug: Product =
+        await this.prisma.product.findFirst({
+          where: { slug: createProductDto.slug },
+        });
 
-      if (existingSlug) {
+      if (existingProductBySlug) {
         throw new ConflictException('Product with this slug already exists');
       }
 
       // Verify category exists
-      const category = await this.prisma.category.findUnique({
+      const category: Category = await this.prisma.category.findUnique({
         where: { id: createProductDto.categoryId },
       });
 
@@ -95,9 +102,10 @@ export class ProductsService {
 
       // Verify subcategory exists if provided
       if (createProductDto.subcategoryId) {
-        const subcategory = await this.prisma.subcategory.findUnique({
-          where: { id: createProductDto.subcategoryId },
-        });
+        const subcategory: Subcategory =
+          await this.prisma.subcategory.findUnique({
+            where: { id: createProductDto.subcategoryId },
+          });
 
         if (!subcategory) {
           throw new NotFoundException(
@@ -133,11 +141,13 @@ export class ProductsService {
       }
 
       // Upload images to S3 if provided
-      let imageKeys: string[] = [];
+      const imageKeys: string[] = [];
       if (images && images.length > 0) {
         for (const image of images) {
-          const sanitizedImageFilename = sanitizeFilename(image.originalname);
-          const imageKey = `products/images/${Date.now()}-${sanitizedImageFilename}`;
+          const sanitizedImageFilename: string = sanitizeFilename(
+            image.originalname,
+          );
+          const imageKey: string = `products/images/${Date.now()}-${sanitizedImageFilename}`;
 
           // Upload the image to S3
           await this.s3Service.uploadFile(image, imageKey);
@@ -174,7 +184,7 @@ export class ProductsService {
           error.stack,
         );
         throw new ConflictException(
-          `Product with this ${error.meta?.target} already exists`,
+          `Product with this ${createProductDto.name} already exists`,
         );
       }
       // Re-throw known exceptions
@@ -186,7 +196,7 @@ export class ProductsService {
         throw error;
       }
       // Log the unexpected error
-      this.logger.error('Failed to create product', error.stack);
+      this.logger.error('Failed to create product', (error as Error)?.stack);
       // Throw a generic server error for other issues
       throw new InternalServerErrorException('Could not create product.');
     }
@@ -217,13 +227,14 @@ export class ProductsService {
         where.status = filters.status as ProductStatus;
       }
 
+      // to check the handling of image URLs
+
       const prod = await this.prisma.product.findMany({
         where,
         orderBy: {
           ['createdAt']: 'desc',
         },
       });
-      // const prodCopie = JSON.parse(JSON.stringify(prod));
 
       // Replace each image key with its presigned URL (download URL)
       await Promise.all(
@@ -258,7 +269,10 @@ export class ProductsService {
         },
       });
     } catch (error) {
-      this.logger.error('Failed to fetch all products', error.stack);
+      this.logger.error(
+        'Failed to fetch all products',
+        (error as Error)?.stack,
+      );
       throw new InternalServerErrorException('Could not retrieve products.');
     }
   }
@@ -283,7 +297,10 @@ export class ProductsService {
         },
       });
     } catch (error) {
-      this.logger.error('Failed to fetch featured products', error.stack);
+      this.logger.error(
+        'Failed to fetch featured products',
+        (error as Error)?.stack,
+      );
       throw new InternalServerErrorException(
         'Could not retrieve featured products.',
       );
@@ -298,7 +315,7 @@ export class ProductsService {
   async findByCategory(categoryId: string): Promise<Product[]> {
     try {
       // Verify category exists
-      const category = await this.prisma.category.findUnique({
+      const category: Category = await this.prisma.category.findUnique({
         where: { id: categoryId },
       });
 
@@ -320,7 +337,10 @@ export class ProductsService {
       if (error instanceof NotFoundException) {
         throw error;
       }
-      this.logger.error('Failed to fetch products by category', error.stack);
+      this.logger.error(
+        'Failed to fetch products by category',
+        (error as Error)?.stack,
+      );
       throw new InternalServerErrorException('Could not retrieve products.');
     }
   }
@@ -333,9 +353,11 @@ export class ProductsService {
   async findBySubcategory(subcategoryId: string): Promise<Product[]> {
     try {
       // Verify subcategory exists
-      const subcategory = await this.prisma.subcategory.findUnique({
-        where: { id: subcategoryId },
-      });
+      const subcategory: Subcategory = await this.prisma.subcategory.findUnique(
+        {
+          where: { id: subcategoryId },
+        },
+      );
 
       if (!subcategory) {
         throw new NotFoundException(
@@ -357,7 +379,10 @@ export class ProductsService {
       if (error instanceof NotFoundException) {
         throw error;
       }
-      this.logger.error('Failed to fetch products by subcategory', error.stack);
+      this.logger.error(
+        'Failed to fetch products by subcategory',
+        (error as Error)?.stack,
+      );
       throw new InternalServerErrorException('Could not retrieve products.');
     }
   }
@@ -400,7 +425,7 @@ export class ProductsService {
         },
       });
     } catch (error) {
-      this.logger.error('Failed to search products', error.stack);
+      this.logger.error('Failed to search products', (error as Error)?.stack);
       throw new InternalServerErrorException('Could not search products.');
     }
   }
@@ -412,7 +437,7 @@ export class ProductsService {
    */
   async findOne(id: string): Promise<Product> {
     try {
-      const product = await this.prisma.product.findUnique({
+      const product: Product = await this.prisma.product.findUnique({
         where: { id },
         include: {
           category: true,
@@ -429,7 +454,7 @@ export class ProductsService {
       if (error instanceof NotFoundException) {
         throw error;
       }
-      this.logger.error('Failed to fetch product', error.stack);
+      this.logger.error('Failed to fetch product', (error as Error)?.stack);
       throw new InternalServerErrorException('Could not retrieve product.');
     }
   }
@@ -441,7 +466,7 @@ export class ProductsService {
    */
   async findBySlug(slug: string): Promise<Product> {
     try {
-      const product = await this.prisma.product.findUnique({
+      const product: Product = await this.prisma.product.findUnique({
         where: { slug },
         include: {
           category: true,
@@ -458,7 +483,7 @@ export class ProductsService {
       if (error instanceof NotFoundException) {
         throw error;
       }
-      this.logger.error('Failed to fetch product', error.stack);
+      this.logger.error('Failed to fetch product', (error as Error)?.stack);
       throw new InternalServerErrorException('Could not retrieve product.');
     }
   }
@@ -478,19 +503,20 @@ export class ProductsService {
     console.log('Existing images:', updateProductDto.existingImages);
     try {
       // Check if product exists
-      const productFound = await this.findOne(id);
+      const productFound: Product = await this.findOne(id);
       // let updateProduct: any = { ...updateProductDto };
 
       // Check if name is being changed and if it's already in use
       if (updateProductDto.name) {
-        const existingProduct = await this.prisma.product.findFirst({
-          where: {
-            name: updateProductDto.name,
-            id: { not: id },
-          },
-        });
+        const existingProductByName: Product =
+          await this.prisma.product.findFirst({
+            where: {
+              name: updateProductDto.name,
+              id: { not: id },
+            },
+          });
 
-        if (existingProduct) {
+        if (existingProductByName) {
           throw new ConflictException('Product with this name already exists');
         }
 
@@ -505,35 +531,37 @@ export class ProductsService {
 
       // Check if SKU is being changed and if it's already in use
       if (updateProductDto.sku) {
-        const existingSku = await this.prisma.product.findFirst({
-          where: {
-            sku: updateProductDto.sku,
-            id: { not: id },
-          },
-        });
+        const existingProductBySku: Product =
+          await this.prisma.product.findFirst({
+            where: {
+              sku: updateProductDto.sku,
+              id: { not: id },
+            },
+          });
 
-        if (existingSku) {
+        if (existingProductBySku) {
           throw new ConflictException('Product with this SKU already exists');
         }
       }
 
       // Check if slug is being changed and if it's already in use
       if (updateProductDto.slug) {
-        const existingSlug = await this.prisma.product.findFirst({
-          where: {
-            slug: updateProductDto.slug,
-            id: { not: id },
-          },
-        });
+        const existingProductBySlug: Product =
+          await this.prisma.product.findFirst({
+            where: {
+              slug: updateProductDto.slug,
+              id: { not: id },
+            },
+          });
 
-        if (existingSlug) {
+        if (existingProductBySlug) {
           throw new ConflictException('Product with this slug already exists');
         }
       }
 
       // Verify category exists if being updated
       if (updateProductDto.categoryId) {
-        const category = await this.prisma.category.findUnique({
+        const category: Category = await this.prisma.category.findUnique({
           where: { id: updateProductDto.categoryId },
         });
 
@@ -546,9 +574,10 @@ export class ProductsService {
 
       // Verify subcategory exists if being updated
       if (updateProductDto.subcategoryId) {
-        const subcategory = await this.prisma.subcategory.findUnique({
-          where: { id: updateProductDto.subcategoryId },
-        });
+        const subcategory: Subcategory =
+          await this.prisma.subcategory.findUnique({
+            where: { id: updateProductDto.subcategoryId },
+          });
 
         if (!subcategory) {
           throw new NotFoundException(
@@ -557,7 +586,7 @@ export class ProductsService {
         }
 
         // Verify subcategory belongs to the specified category
-        const categoryId =
+        const categoryId: string =
           updateProductDto.categoryId || productFound.categoryId;
         if (subcategory.categoryId !== categoryId) {
           throw new BadRequestException(
@@ -567,7 +596,7 @@ export class ProductsService {
       }
 
       // Validate sale price is less than regular price
-      const price = updateProductDto.price || productFound.price;
+      const price: any = updateProductDto.price || productFound.price;
       if (
         updateProductDto.salePrice &&
         updateProductDto.salePrice >= Number(price)
@@ -587,15 +616,15 @@ export class ProductsService {
       }
 
       // --- Image Handling ---
-      let imagesToKeep: string[] = [];
+      const imagesToKeep: string[] = [];
       const imagesToDelete: string[] = [];
-      const currentImages = updateProductDto.existingImages || [];
+      const currentImages: string[] = updateProductDto.existingImages || [];
       console.log('Current images:', currentImages);
 
       // Step 1: Process existing images
       if (currentImages.length > 0 && Array.isArray(currentImages)) {
         // Extract S3 keys from presigned URLs
-        const existingImageKeys = currentImages.map((imageKey) => {
+        const existingImageKeys: string[] = currentImages.map((imageKey) => {
           return this.s3Service.extractKeyFromUrl(imageKey);
         });
         this.logger.debug('Existing image keys:', existingImageKeys);
@@ -626,7 +655,7 @@ export class ProductsService {
               // Log error but potentially continue? Or should failure stop the update?
               this.logger.error(
                 `Failed to delete image ${imageKey} from S3:`,
-                error.stack,
+                (error as Error)?.stack,
               );
             }
           }),
@@ -639,30 +668,20 @@ export class ProductsService {
         await Promise.all(
           images.map(async (image) => {
             // *** Apply sanitization to new image filenames ***
-            const sanitizedImageFilename = sanitizeFilename(image.originalname);
-            const imageKey = `products/images/${Date.now()}-${sanitizedImageFilename}`;
+            const sanitizedImageFilename: string = sanitizeFilename(
+              image.originalname,
+            );
+            const imageKey: string = `products/images/${Date.now()}-${sanitizedImageFilename}`;
             this.logger.debug(`Uploading new image with key: ${imageKey}`);
 
             // uploadFileToS3 now returns the key
-            const uploadedKey = await this.s3Service.uploadFile(
+            const uploadedKey: any = await this.s3Service.uploadFile(
               image,
               imageKey,
             );
             newImageKeys.push(imageKey);
           }),
         );
-
-        /* 
-        const uploadPromises = images.map(async (image) => {
-          // *** Apply sanitization to new image filenames ***
-          const sanitizedImageFilename = sanitizeFilename(image.originalname);
-          const imageKey = `products/images/${Date.now()}-${sanitizedImageFilename}`;
-          this.logger.debug(`Uploading new image with key: ${imageKey}`);
-
-          // uploadFileToS3 now returns the key
-          return await this.s3Service.uploadFile(image, imageKey);
-        });
-        newImageKeys.push(...(await Promise.all(uploadPromises))); */
       }
 
       // Combine kept and new image keys
@@ -673,34 +692,6 @@ export class ProductsService {
       // Clean up DTO field if it exists
       if ('existingImages' in updateProductDto)
         delete updateProductDto.existingImages;
-      // delete updateProduct.existingImages;
-
-      /*
-      // Prepare imageKeys array for update
-      let imageKeys: string[] = productFound.images
-        ? [...productFound.images]
-        : [];
-      // Handle image uploads if provided
-      if (images && images.length > 0) {
-        // Delete old images from S3
-        if (productFound.images && productFound.images.length > 0) {
-          for (const imageKey of productFound.images) {
-            if (imageKey.startsWith('products/images/')) {
-              await this.s3Service.deleteFile(imageKey);
-            }
-          }
-        }
-
-        // Upload new images
-        imageKeys = [];
-        for (const image of images) {
-          const sanitizedImageFilename = sanitizeFilename(image.originalname);
-          const imageKey = `products/images/${Date.now()}-${sanitizedImageFilename}`;
-
-          await this.s3Service.uploadFile(image, imageKey);
-          imageKeys.push(imageKey);
-        }
-      } */
 
       // Prepare data for update
       const updateProduct = {
@@ -750,7 +741,10 @@ export class ProductsService {
         throw error;
       }
       // Log unexpected errors during update
-      this.logger.error(`Failed to update product with ID: ${id}`, error.stack);
+      this.logger.error(
+        `Failed to update product with ID: ${id}`,
+        (error as Error)?.stack,
+      );
       throw new InternalServerErrorException('Could not update product.');
     }
   }
@@ -766,7 +760,7 @@ export class ProductsService {
 
     try {
       // Check if product has order items
-      const orderItemsCount = await this.prisma.orderItem.count({
+      const orderItemsCount: number = await this.prisma.orderItem.count({
         where: { productId: id },
       });
 
@@ -777,7 +771,7 @@ export class ProductsService {
       }
 
       // Check if product has cart items
-      const cartItemsCount = await this.prisma.cartItem.count({
+      const cartItemsCount: number = await this.prisma.cartItem.count({
         where: { productId: id },
       });
 
@@ -818,7 +812,10 @@ export class ProductsService {
         throw error;
       }
       // Log unexpected errors during deletion
-      this.logger.error(`Failed to delete product with ID: ${id}`, error.stack);
+      this.logger.error(
+        `Failed to delete product with ID: ${id}`,
+        (error as Error)?.stack,
+      );
       throw new InternalServerErrorException('Could not delete product.');
     }
   }
