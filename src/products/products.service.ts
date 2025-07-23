@@ -217,6 +217,36 @@ export class ProductsService {
         where.status = filters.status as ProductStatus;
       }
 
+      const prod = await this.prisma.product.findMany({
+        where,
+        orderBy: {
+          ['createdAt']: 'desc',
+        },
+      });
+      // const prodCopie = JSON.parse(JSON.stringify(prod));
+
+      // Replace each image key with its presigned URL (download URL)
+      await Promise.all(
+        prod.map(async (p) => {
+          if (Array.isArray(p.images)) {
+            p.images = await Promise.all(
+              p.images.map((imageKey) =>
+                this.s3Service.getPresignedDownloadUrl(imageKey),
+              ),
+            );
+          }
+        }),
+      );
+      prod.forEach((product) => {
+        console.log('Product id:', product.id);
+        console.log(product.images);
+        console.log('======== extractKey =========');
+        const ImageKeys = product.images.map((imageKey) => {
+          return this.s3Service.extractKeyFromUrl(imageKey);
+        });
+        console.log(ImageKeys);
+      });
+
       return await this.prisma.product.findMany({
         where,
         orderBy: {
@@ -443,12 +473,13 @@ export class ProductsService {
   async update(
     id: string,
     updateProductDto: UpdateProductDto,
-    existingImages?: string[],
     images?: Express.Multer.File[],
   ): Promise<Product> {
+    console.log('Existing images:', updateProductDto.existingImages);
     try {
       // Check if product exists
       const productFound = await this.findOne(id);
+      // let updateProduct: any = { ...updateProductDto };
 
       // Check if name is being changed and if it's already in use
       if (updateProductDto.name) {
@@ -558,7 +589,8 @@ export class ProductsService {
       // --- Image Handling ---
       let imagesToKeep: string[] = [];
       const imagesToDelete: string[] = [];
-      const currentImages = existingImages || [];
+      const currentImages = updateProductDto.existingImages || [];
+      console.log('Current images:', currentImages);
 
       // Step 1: Process existing images
       if (currentImages.length > 0 && Array.isArray(currentImages)) {
@@ -580,6 +612,8 @@ export class ProductsService {
         // If no existingImages provided, delete all existing images
         imagesToDelete.push(...productFound.images);
       }
+      this.logger.debug(`Images to keep: ${imagesToKeep.join(', ')}`);
+      this.logger.debug(`Images to delete: ${imagesToDelete.join(', ')}`);
 
       // Delete images marked for removal directly using the key
       if (imagesToDelete.length > 0) {
@@ -633,6 +667,13 @@ export class ProductsService {
 
       // Combine kept and new image keys
       const imagesToDto: string[] = [...imagesToKeep, ...newImageKeys];
+      this.logger.debug(
+        `Final images to store in product: ${imagesToDto.join(', ')}`,
+      );
+      // Clean up DTO field if it exists
+      if ('existingImages' in updateProductDto)
+        delete updateProductDto.existingImages;
+      // delete updateProduct.existingImages;
 
       /*
       // Prepare imageKeys array for update

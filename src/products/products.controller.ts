@@ -74,15 +74,9 @@ export class ProductsController {
   update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() updateProductDto: UpdateProductDto,
-    existingImages?: string[],
     @UploadedFiles() images?: Express.Multer.File[],
   ): Promise<Product> {
-    return this.productsService.update(
-      id,
-      updateProductDto,
-      existingImages,
-      images,
-    );
+    return this.productsService.update(id, updateProductDto, images);
   }
 
   @Delete(':id')
