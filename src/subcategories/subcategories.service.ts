@@ -9,7 +9,7 @@ import {
 import { CreateSubcategoryDto } from './dto/create-subcategory.dto';
 import { UpdateSubcategoryDto } from './dto/update-subcategory.dto';
 import { PrismaService } from 'src/prisma/prisma.service';
-import { Prisma, Subcategory } from '@prisma/client';
+import { Category, Prisma, Subcategory } from '@prisma/client';
 
 @Injectable()
 export class SubcategoriesService {
@@ -20,21 +20,21 @@ export class SubcategoriesService {
   private readonly logger = new Logger(SubcategoriesService.name);
 
   /**
-   * Create a new category
+   * Create a new subcategory
    * @param createSubcategoryDto - Data transfer object for creating a category
-   * @returns The created category
+   * @returns The created subcategory
    */
   async create(
     createSubcategoryDto: CreateSubcategoryDto,
   ): Promise<Subcategory> {
-    console.log('Creating subcategory with data:', createSubcategoryDto);
     try {
       // Check if category with the same name already exists
-      const existingSubcategory = await this.prisma.subcategory.findFirst({
-        where: { name: createSubcategoryDto.name },
-      });
+      const existingSubcategoryByName: Subcategory =
+        await this.prisma.subcategory.findFirst({
+          where: { name: createSubcategoryDto.name },
+        });
 
-      if (existingSubcategory) {
+      if (existingSubcategoryByName) {
         throw new ConflictException(
           'Subcategory with this name already exists',
         );
@@ -50,11 +50,12 @@ export class SubcategoriesService {
       }
 
       // Check if slug is unique
-      const existingSlug = await this.prisma.category.findFirst({
-        where: { slug: createSubcategoryDto.slug },
-      });
+      const existingSubcategoryBySlug: Subcategory =
+        await this.prisma.subcategory.findFirst({
+          where: { slug: createSubcategoryDto.slug },
+        });
 
-      if (existingSlug) {
+      if (existingSubcategoryBySlug) {
         throw new ConflictException(
           'Subcategory with this slug already exists',
         );
@@ -62,7 +63,7 @@ export class SubcategoriesService {
 
       if (createSubcategoryDto.categoryId) {
         // Ensure the category exists
-        const categoryExists = await this.prisma.category.findUnique({
+        const categoryExists: Category = await this.prisma.category.findUnique({
           where: { id: createSubcategoryDto.categoryId },
         });
         if (!categoryExists) {
@@ -92,7 +93,10 @@ export class SubcategoriesService {
         );
       }
       // Log the unexpected error
-      this.logger.error('Failed to create subcategory', error.stack);
+      this.logger.error(
+        'Failed to create subcategory',
+        (error as Error)?.stack,
+      );
 
       // Throw a generic server error for other issues
       throw new InternalServerErrorException('Could not create subcategory.');
@@ -114,7 +118,10 @@ export class SubcategoriesService {
         },
       });
     } catch (error) {
-      this.logger.error('Failed to fetch all subcategories', error.stack);
+      this.logger.error(
+        'Failed to fetch all subcategories',
+        (error as Error)?.stack,
+      );
       throw new InternalServerErrorException(
         'Could not retrieve subcategories.',
       );
@@ -128,9 +135,11 @@ export class SubcategoriesService {
    */
   async findOne(id: string): Promise<Subcategory> {
     try {
-      const subcategory = await this.prisma.subcategory.findUnique({
-        where: { id },
-      });
+      const subcategory: Subcategory = await this.prisma.subcategory.findUnique(
+        {
+          where: { id },
+        },
+      );
 
       if (!subcategory) {
         throw new NotFoundException(`Subcategory with ID ${id} not found`);
@@ -138,7 +147,7 @@ export class SubcategoriesService {
 
       return subcategory;
     } catch (error) {
-      this.logger.error('Failed to fetch subcategory', error.stack);
+      this.logger.error('Failed to fetch subcategory', (error as Error)?.stack);
       throw new InternalServerErrorException('Could not retrieve subcategory.');
     }
   }
@@ -150,9 +159,11 @@ export class SubcategoriesService {
    */
   async findBySlug(slug: string): Promise<Subcategory> {
     try {
-      const subcategory = await this.prisma.subcategory.findUnique({
-        where: { slug },
-      });
+      const subcategory: Subcategory = await this.prisma.subcategory.findUnique(
+        {
+          where: { slug },
+        },
+      );
 
       if (!subcategory) {
         throw new NotFoundException(`Subcategory with slug ${slug} not found`);
@@ -160,7 +171,7 @@ export class SubcategoriesService {
 
       return subcategory;
     } catch (error) {
-      this.logger.error('Failed to fetch subcategory', error.stack);
+      this.logger.error('Failed to fetch subcategory', (error as Error)?.stack);
       throw new InternalServerErrorException('Could not retrieve subcategory.');
     }
   }
@@ -177,18 +188,19 @@ export class SubcategoriesService {
   ): Promise<Subcategory> {
     try {
       // Check if category exists
-      const subcategoryFound = await this.findOne(id);
+      const subcategoryFound: Subcategory = await this.findOne(id);
 
       // Check if name is being changed and if it's already in use
       if (updateSubcategoryDto.name) {
-        const existingSubcategory = await this.prisma.subcategory.findFirst({
-          where: {
-            name: updateSubcategoryDto.name,
-            id: { not: id },
-          },
-        });
+        const existingSubcategoryByName: Subcategory =
+          await this.prisma.subcategory.findFirst({
+            where: {
+              name: updateSubcategoryDto.name,
+              id: { not: id },
+            },
+          });
 
-        if (existingSubcategory) {
+        if (existingSubcategoryByName) {
           throw new ConflictException(
             'Subcategory with this name already exists',
           );
@@ -205,16 +217,29 @@ export class SubcategoriesService {
 
       // Check if slug is being changed and if it's already in use
       if (updateSubcategoryDto.slug) {
-        const existingSlug = await this.prisma.subcategory.findFirst({
-          where: {
-            slug: updateSubcategoryDto.slug,
-            id: { not: id },
-          },
-        });
+        const existingSubcategoryBySlug: Subcategory =
+          await this.prisma.subcategory.findFirst({
+            where: {
+              slug: updateSubcategoryDto.slug,
+              id: { not: id },
+            },
+          });
 
-        if (existingSlug) {
+        if (existingSubcategoryBySlug) {
           throw new ConflictException(
             'Subcategory with this slug already exists',
+          );
+        }
+      }
+
+      if (updateSubcategoryDto.categoryId) {
+        // Ensure the category exists
+        const categoryExists: Category = await this.prisma.category.findUnique({
+          where: { id: updateSubcategoryDto.categoryId },
+        });
+        if (!categoryExists) {
+          throw new ConflictException(
+            'Category with the specified ID does not exist',
           );
         }
       }
@@ -249,15 +274,15 @@ export class SubcategoriesService {
       // Log unexpected errors during update
       this.logger.error(
         `Failed to update subcategory with ID: ${id}`,
-        error.stack,
+        (error as Error)?.stack,
       );
       throw new InternalServerErrorException('Could not update subcategory.');
     }
   }
 
   /**
-   * Delete a category
-   * @param id - The ID of the category to delete
+   * Delete a subcategory
+   * @param id - The ID of the subcategory to delete
    * @returns A success message or object
    */
   async remove(id: string): Promise<{ success: boolean }> {
@@ -266,7 +291,7 @@ export class SubcategoriesService {
 
     try {
       // Check if subcategory has products
-      const productsCount = await this.prisma.product.count({
+      const productsCount: number = await this.prisma.product.count({
         where: { categoryId: id },
       });
 
@@ -294,7 +319,7 @@ export class SubcategoriesService {
       // Log unexpected errors during deletion
       this.logger.error(
         `Failed to delete subcategory with ID: ${id}`,
-        error.stack,
+        (error as Error)?.stack,
       );
       throw new InternalServerErrorException('Could not delete subcategory.');
     }
