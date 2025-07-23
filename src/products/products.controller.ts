@@ -42,8 +42,6 @@ export class ProductsController {
     @Body() createProductDto: CreateProductDto,
     @UploadedFiles() images: Express.Multer.File[],
   ): Promise<Product> {
-    console.log('Creating product with data - controller:', createProductDto);
-    console.log('Uploaded images: - controller', images);
     return this.productsService.create(images, createProductDto);
   }
 
