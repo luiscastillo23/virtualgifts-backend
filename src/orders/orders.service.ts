@@ -3,7 +3,6 @@ import {
   BadRequestException,
   NotFoundException,
   Logger,
-  InternalServerErrorException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { MailService } from '../mail/mail.service';
@@ -217,8 +216,8 @@ export class OrdersService {
           order: completeOrder,
           paymentIntent,
           requiresAction:
-            paymentIntent.status === 'requires_action' ||
-            paymentIntent.status === 'requires_payment_method',
+            (paymentIntent.status as string) === 'requires_action' ||
+            (paymentIntent.status as string) === 'requires_payment_method',
         };
       } catch (error) {
         this.logger.error(
@@ -504,18 +503,28 @@ export class OrdersService {
     updateOrderDto: UpdateOrderDto,
   ): Promise<OrderWithItems> {
     try {
-      const order = await this.prisma.order.update({
+      // Only allow updating status and paymentStatus
+      const allowedUpdates: {
+        status?: OrderStatus;
+        paymentStatus?: PaymentStatus;
+      } = {};
+
+      if (updateOrderDto.status !== undefined) {
+        allowedUpdates.status = updateOrderDto.status;
+      }
+
+      if (updateOrderDto.paymentStatus !== undefined) {
+        allowedUpdates.paymentStatus = updateOrderDto.paymentStatus;
+      }
+
+      // First update the order
+      await this.prisma.order.update({
         where: { id },
-        data: updateOrderDto,
-        include: {
-          user: true,
-          items: {
-            include: {
-              product: true,
-            },
-          },
-        },
+        data: allowedUpdates,
       });
+
+      // Then fetch the complete order with relations
+      const order = await this.findOne(id);
 
       this.logger.log(`Order updated: ${order.orderNumber}`);
       return order;
@@ -797,7 +806,6 @@ export class OrdersService {
           orderStatus = OrderStatus.PROCESSING;
           break;
         case PaymentStatus.FAILED:
-        case PaymentStatus.CANCELLED:
           orderStatus = OrderStatus.CANCELLED;
           // Release reserved stock
           await this.stockValidationService.releaseStock(

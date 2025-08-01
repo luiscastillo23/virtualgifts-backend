@@ -1,6 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import * as paypal from '@paypal/paypal-server-sdk';
+import {
+  Client,
+  Environment,
+  OrdersController,
+  PaymentsController,
+  CheckoutPaymentIntent,
+} from '@paypal/paypal-server-sdk';
 import {
   PaymentGatewayInterface,
   PaymentIntent,
@@ -12,17 +18,26 @@ import {
 @Injectable()
 export class PayPalGateway implements PaymentGatewayInterface {
   private readonly logger = new Logger(PayPalGateway.name);
-  private payPalClient: paypal.core.PayPalHttpClient;
+  private payPalClient: Client;
+  private ordersController: OrdersController;
+  private paymentsController: PaymentsController;
 
   constructor(private readonly configService: ConfigService) {
     const mode = this.configService.get<string>('PAYPAL_MODE', 'sandbox');
     const clientId = this.configService.get<string>('PAYPAL_CLIENT_ID');
     const clientSecret = this.configService.get<string>('PAYPAL_CLIENT_SECRET');
-    const environment =
-      mode === 'live'
-        ? new paypal.core.LiveEnvironment(clientId, clientSecret)
-        : new paypal.core.SandboxEnvironment(clientId, clientSecret);
-    this.payPalClient = new paypal.core.PayPalHttpClient(environment);
+
+    this.payPalClient = new Client({
+      environment:
+        mode === 'live' ? Environment.Production : Environment.Sandbox,
+      clientCredentialsAuthCredentials: {
+        oAuthClientId: clientId,
+        oAuthClientSecret: clientSecret,
+      },
+    });
+
+    this.ordersController = new OrdersController(this.payPalClient);
+    this.paymentsController = new PaymentsController(this.payPalClient);
   }
 
   async createPaymentIntent(
@@ -30,40 +45,41 @@ export class PayPalGateway implements PaymentGatewayInterface {
     currency: string = 'USD',
     metadata?: Record<string, any>,
   ): Promise<PaymentIntent> {
-    const request = new paypal.orders.OrdersCreateRequest();
-    request.prefer('return=representation');
-    request.requestBody({
-      intent: 'CAPTURE',
-      purchase_units: [
-        {
-          amount: {
-            currency_code: currency.toUpperCase(),
-            value: amount.toFixed(2),
-          },
-          custom_id: metadata?.orderId || '',
-        },
-      ],
-      application_context: {
-        return_url: metadata?.returnUrl || 'https://example.com/success',
-        cancel_url: metadata?.cancelUrl || 'https://example.com/cancel',
-      },
-    });
-
     try {
-      const order = await this.payPalClient.execute(request);
-      const approvalUrl = order.result.links.find(
-        (link: any) => link.rel === 'approve',
+      const orderRequest = {
+        body: {
+          intent: CheckoutPaymentIntent.Capture,
+          purchaseUnits: [
+            {
+              amount: {
+                currencyCode: currency.toUpperCase(),
+                value: amount.toFixed(2),
+              },
+              customId: metadata?.orderId || '',
+            },
+          ],
+          applicationContext: {
+            returnUrl: metadata?.returnUrl || 'https://example.com/success',
+            cancelUrl: metadata?.cancelUrl || 'https://example.com/cancel',
+          },
+        },
+        prefer: 'return=representation',
+      };
+
+      const order = await this.ordersController.createOrder(orderRequest);
+      const approvalUrl = order.result.links?.find(
+        (link) => link.rel === 'approve',
       )?.href;
 
       return {
-        id: order.result.id,
+        id: order.result.id!,
         amount,
         currency: currency.toUpperCase(),
-        status: this.mapPayPalStatus(order.result.status),
+        status: this.mapPayPalStatus(order.result.status!),
         clientSecret: approvalUrl,
         metadata: { ...metadata, approvalUrl },
       };
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error('Failed to create PayPal payment intent', error);
       throw new Error(
         `PayPal payment intent creation failed: ${error.message}`,
@@ -73,25 +89,34 @@ export class PayPalGateway implements PaymentGatewayInterface {
 
   async confirmPayment(
     paymentIntentId: string,
-    paymentMethodData: any,
+    _paymentMethodData?: any,
   ): Promise<PaymentResult> {
-    const request = new paypal.orders.OrdersCaptureRequest(paymentIntentId);
-    request.requestBody({});
-
     try {
-      const capture = await this.payPalClient.execute(request);
-      const captureData = capture.result.purchase_units[0].payments.captures[0];
+      const captureRequest = {
+        body: {},
+      };
+
+      const capture = await this.ordersController.captureOrder({
+        id: paymentIntentId,
+        ...captureRequest,
+      });
+      const captureData =
+        capture.result.purchaseUnits?.[0]?.payments?.captures?.[0];
+
+      if (!captureData) {
+        throw new Error('No capture data found in response');
+      }
 
       return {
         success: captureData.status === 'COMPLETED',
         paymentId: paymentIntentId,
-        transactionId: captureData.id,
-        status: this.mapPayPalStatus(captureData.status),
-        amount: parseFloat(captureData.amount.value),
-        currency: captureData.amount.currency_code,
+        transactionId: captureData.id || '',
+        status: this.mapPayPalStatus(captureData.status || ''),
+        amount: parseFloat(captureData.amount?.value || '0'),
+        currency: captureData.amount?.currencyCode || 'USD',
         gatewayResponse: capture.result,
       };
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error('Failed to confirm PayPal payment', error);
       return {
         success: false,
@@ -110,38 +135,39 @@ export class PayPalGateway implements PaymentGatewayInterface {
   ): Promise<PaymentResult> {
     try {
       // Get the order to find the capture ID
-      const getOrderRequest = new paypal.orders.OrdersGetRequest(paymentId);
-      const order = await this.payPalClient.execute(getOrderRequest);
-      const captureId = order.result.purchase_units[0].payments.captures[0].id;
+      const order = await this.ordersController.getOrder({ id: paymentId });
+      const captureId =
+        order.result.purchaseUnits?.[0]?.payments?.captures?.[0]?.id;
 
-      const refundRequest = new paypal.payments.CapturesRefundRequest(
-        captureId,
-      );
-      if (amount) {
-        refundRequest.requestBody({
-          amount: {
-            value: amount.toFixed(2),
-            currency_code: 'USD',
-          },
-        });
-      } else {
-        refundRequest.requestBody({});
+      if (!captureId) {
+        throw new Error('No capture ID found for this order');
       }
-      const refund = await this.payPalClient.execute(refundRequest);
+
+      const refund = await this.paymentsController.refundCapturedPayment({
+        captureId: captureId,
+        body: amount
+          ? {
+              amount: {
+                value: amount.toFixed(2),
+                currencyCode: 'USD',
+              },
+            }
+          : undefined,
+      });
 
       return {
         success: refund.result.status === 'COMPLETED',
         paymentId,
-        transactionId: refund.result.id,
+        transactionId: refund.result.id || '',
         status:
           refund.result.status === 'COMPLETED'
             ? PaymentStatus.REFUNDED
             : PaymentStatus.FAILED,
-        amount: parseFloat(refund.result.amount.value),
-        currency: refund.result.amount.currency_code,
+        amount: parseFloat(refund.result.amount?.value || '0'),
+        currency: refund.result.amount?.currencyCode || 'USD',
         gatewayResponse: refund.result,
       };
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error('Failed to refund PayPal payment', error);
       return {
         success: false,
@@ -177,10 +203,9 @@ export class PayPalGateway implements PaymentGatewayInterface {
 
   async getPaymentStatus(paymentId: string): Promise<PaymentStatus> {
     try {
-      const getOrderRequest = new paypal.orders.OrdersGetRequest(paymentId);
-      const order = await this.payPalClient.execute(getOrderRequest);
-      return this.mapPayPalStatus(order.result.status);
-    } catch (error) {
+      const order = await this.ordersController.getOrder({ id: paymentId });
+      return this.mapPayPalStatus(order.result.status || '');
+    } catch (error: any) {
       this.logger.error('Failed to get PayPal payment status', error);
       return PaymentStatus.FAILED;
     }
