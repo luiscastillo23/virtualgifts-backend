@@ -177,9 +177,10 @@ model Order {
   shippingPhone     String?
   
   // Payment information
-  paymentMethod     String?
+  paymentMethod     String? // e.g., "credit_card", "crypto", "binance_pay"
   paymentStatus     PaymentStatus @default(PENDING)
-  transactionId     String?
+  transactionId     String? // Reference from payment processor or blockchain
+  paymentDetails    Json? // Non-sensitive, method-specific metadata (e.g., last 4 digits, wallet address, Binance Pay ID). Never store sensitive data!
   
   // Relations
   userId        String    @db.Uuid
