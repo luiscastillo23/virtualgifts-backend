@@ -5,9 +5,17 @@ import { ConfigService } from '@nestjs/config';
 import { Logger, ValidationPipe } from '@nestjs/common'; // Import Logger and ValidationPipe
 // import helmet from 'helmet';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
+import { json, urlencoded } from 'express';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+
+  // --- Raw Body Parser for Webhooks ---
+  // Configure raw body parser for webhook endpoints to preserve original payload
+  // This is essential for webhook signature verification
+  app.use('/api/payment/webhook', json({ limit: '50mb' }));
+  app.use(json({ limit: '50mb' }));
+  app.use(urlencoded({ extended: true, limit: '50mb' }));
 
   // --- Security ---
   // Apply basic security headers using Helmet
@@ -94,7 +102,7 @@ async function bootstrap() {
   );
   // await app.listen(process.env.PORT ?? 4000);
 }
-bootstrap().catch((err) => {
+bootstrap().catch((err: Error) => {
   // Use Logger for bootstrap errors as well
   const logger = new Logger('BootstrapError');
   logger.error('❌ Error during application bootstrap', err.stack);
