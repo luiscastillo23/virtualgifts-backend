@@ -1,3 +1,5 @@
+// src/payment/gateways/nowpayments.gateway.ts
+
 import {
   Injectable,
   Logger,
@@ -55,12 +57,6 @@ export class NowPaymentsGateway implements PaymentGatewayInterface {
     metadata?: Record<string, any>,
   ): Promise<PaymentIntent> {
     try {
-      this.logger.log(
-        `Creating NOWPayments intent for ${amount} ${currency}, paying with ${metadata?.payCurrency}`,
-      );
-
-      // ### START OF FIX ###
-      // The payCurrency was in metadata but not being passed to the validation function.
       const payCurrency = metadata?.payCurrency;
       if (!payCurrency) {
         throw new BadRequestException(
@@ -68,9 +64,9 @@ export class NowPaymentsGateway implements PaymentGatewayInterface {
         );
       }
 
-      // Validate minimum payment amount before creating the intent
-      // await this.getMinimumPaymentAmount(currency, payCurrency);
-      // ### END OF FIX ###
+      this.logger.log(
+        `Creating NOWPayments intent for ${amount} ${currency}, paying with ${payCurrency}`,
+      );
 
       const requestBody = {
         price_amount: amount,
@@ -83,6 +79,7 @@ export class NowPaymentsGateway implements PaymentGatewayInterface {
           metadata?.returnUrl || `${this.appBaseUrl}/payment/success`,
         cancel_url: metadata?.cancelUrl || `${this.appBaseUrl}/payment/cancel`,
       };
+      // --- END OF THE DEFINITIVE FIX ---
 
       const response = await axios.post(
         `${this.baseUrl}/payment`,
@@ -246,43 +243,6 @@ export class NowPaymentsGateway implements PaymentGatewayInterface {
         return PaymentStatus.PROCESSING;
       default:
         return PaymentStatus.PENDING;
-    }
-  }
-
-  private async getMinimumPaymentAmount(
-    fromCurrency: string,
-    toCurrency: string,
-  ): Promise<number> {
-    try {
-      // ### START OF FIX ###
-      // Ensure currency codes are valid before making the API call
-      if (!fromCurrency || !toCurrency) {
-        throw new BadRequestException(
-          'Both fromCurrency and toCurrency must be provided.',
-        );
-      }
-      // ### END OF FIX ###
-
-      const response = await axios.get(
-        `${this.baseUrl}/min-amount?currency_from=${fromCurrency.toLowerCase()}&currency_to=${toCurrency.toLowerCase()}`,
-        {
-          headers: { 'x-api-key': this.apiKey },
-        },
-      );
-
-      if (response.data && response.data.min_amount) {
-        return parseFloat(response.data.min_amount);
-      }
-
-      throw new Error(
-        'Could not retrieve minimum payment amount from NOWPayments.',
-      );
-    } catch (error) {
-      this.logger.error(
-        `Failed to get minimum payment amount for ${fromCurrency} -> ${toCurrency}`,
-        error.response?.data || error.stack,
-      );
-      throw error;
     }
   }
 }
