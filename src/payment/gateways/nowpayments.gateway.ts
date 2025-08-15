@@ -69,7 +69,7 @@ export class NowPaymentsGateway implements PaymentGatewayInterface {
       }
 
       // Validate minimum payment amount before creating the intent
-      await this.getMinimumPaymentAmount(currency, payCurrency);
+      // await this.getMinimumPaymentAmount(currency, payCurrency);
       // ### END OF FIX ###
 
       const requestBody = {
