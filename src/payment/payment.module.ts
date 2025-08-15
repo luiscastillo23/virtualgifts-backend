@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { PaymentService } from './payment.service';
 import { PaymentController } from './payment.controller';
@@ -9,11 +9,14 @@ import { BinancePayGateway } from './gateways/binance-pay.gateway';
 import { NowPaymentsGateway } from './gateways/nowpayments.gateway';
 import { BitPayGateway } from './gateways/bitpay.gateway';
 import { CoinbaseGateway } from './gateways/coinbase.gateway';
+// 1. Import the OrdersModule
 import { OrdersModule } from '../orders/orders.module';
 
 @Module({
-  imports: [ConfigModule, OrdersModule],
+  // 2. Use forwardRef to import the OrdersModule
+  imports: [ConfigModule, forwardRef(() => OrdersModule)],
   controllers: [PaymentController],
+  // 3. This is now the single source of truth for these providers
   providers: [
     PaymentService,
     StripeGateway,
@@ -24,6 +27,7 @@ import { OrdersModule } from '../orders/orders.module';
     BitPayGateway,
     CoinbaseGateway,
   ],
+  // 4. Export the services so other modules (like OrdersModule) can use them
   exports: [
     PaymentService,
     StripeGateway,
