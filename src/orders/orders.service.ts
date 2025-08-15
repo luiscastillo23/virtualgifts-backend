@@ -109,6 +109,10 @@ export class OrdersService {
           {
             customerEmail: createOrderDto.customerEmail,
             orderId: orderNumber,
+            // new
+            // Pass the crypto currency from the request (e.g., "USDT")
+            payCurrency: createOrderDto.paymentMethod.crypto?.currency,
+            gateway: createOrderDto.paymentMethod.crypto?.gateway,
           },
         );
 
